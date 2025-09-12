@@ -19,3 +19,4 @@ glide.lock
 VERSION
 
 coverage.out
+vendor/
