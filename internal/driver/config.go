@@ -32,7 +32,7 @@ type ConnectionInfo struct {
 }
 
 func (info *ConnectionInfo) String() string {
-	if info.Protocol == ProtocolTCP {
+	if info.Protocol == ProtocolTCP || info.Protocol == ProtocolRTUoverTCP {
 		return fmt.Sprintf("%s:%s:%d:%d", info.Protocol, info.Address, info.Port, info.UnitID)
 	}
 	return fmt.Sprintf("%s:%s:%d:%d:%d:%d:%d:%s", info.Protocol, info.Address, info.Port, info.UnitID, info.BaudRate, info.DataBits, info.StopBits, info.Parity)
@@ -42,13 +42,14 @@ func createConnectionInfo(protocols map[string]models.ProtocolProperties) (info 
 	protocolRTU, rtuExist := protocols[ProtocolRTU]
 	protocolASCII, asciiExist := protocols[ProtocolASCII]
 	protocolTCP, tcpExist := protocols[ProtocolTCP]
+	protocolRTUoverTCP, rtuovertcpExist := protocols[ProtocolRTUoverTCP]
 
 	if rtuExist && tcpExist || rtuExist && asciiExist || tcpExist && asciiExist || rtuExist && tcpExist && asciiExist {
 		driver.Logger.Errorf("unsupported multiple protocols,protocols: %+v", protocols)
 		return info, fmt.Errorf("unsupported multiple protocols, protocols:%+v", protocols)
-	} else if !rtuExist && !tcpExist && !asciiExist {
+	} else if !rtuExist && !tcpExist && !asciiExist && !rtuovertcpExist {
 		driver.Logger.Errorf("unable to create connection info,protocols: %+v", protocols)
-		return info, fmt.Errorf("unable to create connection info, protocol config '%s' or %s not exist", ProtocolRTU, ProtocolTCP)
+		return info, fmt.Errorf("unable to create connection info, protocol config not exist")
 	}
 
 	if rtuExist {
@@ -69,8 +70,14 @@ func createConnectionInfo(protocols map[string]models.ProtocolProperties) (info 
 			driver.Logger.Errorf("protocolTCP %+v create TCPConnectionInfo failed", protocolTCP)
 			return nil, err
 		}
+	} else if rtuovertcpExist {
+		info, err = createTcpConnectionInfo(protocolRTUoverTCP)
+		if err != nil {
+			driver.Logger.Errorf("protocolRTUoverTCP %+v create TCPConnectionInfo failed", protocolRTUoverTCP)
+			return nil, err
+		}
+		info.Protocol = ProtocolRTUoverTCP
 	}
-
 	return info, nil
 }
 

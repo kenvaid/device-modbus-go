@@ -28,6 +28,8 @@ type ModbusClient struct {
 	RTUClientHandler MODBUS.RTUClientHandler
 	// ASCIIClientHandler is used for holding device ASCII connection
 	ASCIIClientHandler MODBUS.ASCIIClientHandler
+	// RTUOverTCPClientHandler is used for holding device RTUoverTCP connection
+	RTUOverTCPClientHandler MODBUS.RTUOverTCPClientHandler
 	// Context is used for holding the context of the client
 	ctx context.Context
 
@@ -61,6 +63,14 @@ func (c *ModbusClient) OpenConnection() error {
 		}
 		newClient = MODBUS.NewClient(&c.ASCIIClientHandler)
 		driver.Logger.Info("Modbus client create ASCII connection.")
+	case ProtocolRTUoverTCP:
+		err := c.RTUOverTCPClientHandler.Connect(c.ctx)
+		if err != nil {
+			driver.Logger.Errorf("client %+v failed to connect to Modbus device: %v", &c, err)
+			return err
+		}
+		newClient = MODBUS.NewClient(&c.RTUOverTCPClientHandler)
+		driver.Logger.Info("Modbus client create RTUOverTCP connection.")
 	default:
 		driver.Logger.Errorf("modbus connection type don't support!")
 		return fmt.Errorf("modbus connection type %v don't support", c.ModbusType)
@@ -78,6 +88,8 @@ func (c *ModbusClient) CloseConnection() error {
 		err = c.RTUClientHandler.Close()
 	case ProtocolASCII:
 		err = c.ASCIIClientHandler.Close()
+	case ProtocolRTUoverTCP:
+		err = c.RTUOverTCPClientHandler.Close()
 	default:
 		driver.Logger.Errorf("modbus connection type don't support!")
 		return fmt.Errorf("modbus connection type %v don't support", c.ModbusType)
@@ -182,6 +194,12 @@ func NewDeviceClient(connectionInfo *ConnectionInfo) (*ModbusClient, error) {
 		client.ASCIIClientHandler.StopBits = connectionInfo.StopBits
 		client.ASCIIClientHandler.Parity = connectionInfo.Parity
 		client.ASCIIClientHandler.Logger = log.New(os.Stdout, "", log.LstdFlags)
+	case ProtocolRTUoverTCP:
+		client.RTUOverTCPClientHandler = *MODBUS.NewRTUOverTCPClientHandler(fmt.Sprintf("%s:%d", connectionInfo.Address, connectionInfo.Port))
+		client.RTUOverTCPClientHandler.SlaveID = byte(connectionInfo.UnitID)
+		client.RTUOverTCPClientHandler.Timeout = time.Duration(connectionInfo.Timeout) * time.Second
+		client.RTUOverTCPClientHandler.IdleTimeout = time.Duration(connectionInfo.IdleTimeout) * time.Second
+		client.RTUOverTCPClientHandler.Logger = log.New(os.Stdout, "", log.LstdFlags)
 	default:
 		driver.Logger.Errorf("modbus connection type don't support!")
 		return nil, fmt.Errorf("modbus connection type %v don't support", client.ModbusType)

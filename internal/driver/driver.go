@@ -106,7 +106,7 @@ func (d *Driver) unlockAddress(address string) {
 // lockableAddress return the lockable address according to the protocol
 func (d *Driver) lockableAddress(info *ConnectionInfo) string {
 	var address string
-	if info.Protocol == ProtocolTCP {
+	if info.Protocol == ProtocolTCP || info.Protocol == ProtocolRTUoverTCP {
 		address = fmt.Sprintf("%s:%d", info.Address, info.Port)
 	} else {
 		address = info.Address

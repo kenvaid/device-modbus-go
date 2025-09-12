@@ -17,7 +17,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/grid-x/serial"
+	"github.com/goburrow/serial"
 	"github.com/tbrandon/mbserver"
 )
 
