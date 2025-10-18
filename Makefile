@@ -1,4 +1,4 @@
-.PHONY: build test unittest lint clean prepare update docker
+.PHONY: build test unittest lint clean prepare update docker arm64
 
 # change the following boolean flag to enable or disable the Full RELRO (RELocation Read Only) for linux ELF (Executable and Linkable Format) binaries
 ENABLE_FULL_RELRO=true
@@ -42,6 +42,9 @@ tidy:
 
 cmd/device-modbus:
 	CGO_ENABLED=0 go build -tags "$(ADD_BUILD_TAGS)" $(GOFLAGS) -o $@ ./cmd
+
+arm64:
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags "$(ADD_BUILD_TAGS)" $(GOFLAGS) -o cmd/device-modbus-arm64 ./cmd
 
 unittest:
 	go test ./... -coverprofile=coverage.out

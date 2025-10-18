@@ -11,13 +11,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/edgexfoundry/device-sdk-go/v4/pkg/models"
 	"github.com/edgexfoundry/go-mod-core-contracts/v4/common"
 	"github.com/edgexfoundry/go-mod-core-contracts/v4/errors"
+	"github.com/spf13/cast"
 )
 
 // DeviceClient is a interface for modbus client lib to implementation
@@ -42,6 +42,24 @@ type CommandInfo struct {
 	RawType    string
 }
 
+func splitFloat(f float64) (intPart int, fracPart int) {
+	intPart = int(math.Floor(f)) // 整数部分
+
+	// 计算小数部分
+	frac := f - float64(intPart)
+
+	// 判断有几位小数（保留最多2位）
+	// 比如 2191.15 -> 15, 2191.6 -> 6
+	fracPart = int(math.Round(frac * 100)) // 乘以100得到两位小数的整数表示
+
+	// 如果小数末尾是0，比如 2191.60 -> 60 -> 转成 6
+	if fracPart%10 == 0 {
+		fracPart /= 10
+	}
+
+	return
+}
+
 func createCommandInfo(req *models.CommandRequest) (*CommandInfo, error) {
 	if _, ok := req.Attributes[PRIMARY_TABLE]; !ok {
 		return nil, errors.NewCommonEdgeX(errors.KindContractInvalid, fmt.Sprintf("attribute %s not exists", PRIMARY_TABLE), nil)
@@ -52,33 +70,26 @@ func createCommandInfo(req *models.CommandRequest) (*CommandInfo, error) {
 	if _, ok := req.Attributes[STARTING_ADDRESS]; !ok {
 		return nil, errors.NewCommonEdgeX(errors.KindContractInvalid, fmt.Sprintf("attribute %s not exists", STARTING_ADDRESS), nil)
 	}
-	var startingAddressStr string
+	//var startingAddressStr string
+	var bitAddress uint8
+	var startingAddress uint16
 	switch v := req.Attributes[STARTING_ADDRESS].(type) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		startingAddressStr = fmt.Sprintf("%d", v)
-	case float32, float64:
-		startingAddressStr = fmt.Sprintf("%.2f", v)
+		startingAddress = uint16(cast.ToUint64(v))
+		bitAddress = 0
+	case float32:
+		intPart, fracPart := splitFloat(float64(v))
+		startingAddress = uint16(intPart)
+		bitAddress = uint8(fracPart)
+	case float64:
+		intPart, fracPart := splitFloat(v)
+		startingAddress = uint16(intPart)
+		bitAddress = uint8(fracPart)
 	default:
-		startingAddressStr = fmt.Sprintf("%v", v)
+		return nil, errors.NewCommonEdgeX(errors.KindContractInvalid, fmt.Sprintf("invaliade startingAddress %v", v), nil)
 	}
 
-	addressParts := strings.Split(startingAddressStr, ".")
-	var bitAddress uint8
-	if len(addressParts) > 2 {
-		return nil, errors.NewCommonEdgeX(errors.KindContractInvalid, fmt.Sprintf("invaliade startingAddress %s", startingAddressStr), nil)
-	} else if len(addressParts) == 2 {
-		num, err := strconv.ParseUint(addressParts[1], 10, 8)
-		if err != nil {
-			return nil, errors.NewCommonEdgeX(errors.Kind(err), "fail to parse bitAddress", err)
-		}
-		bitAddress = uint8(num)
-	}
-	startingAddressStr = addressParts[0]
-	startingAddress, err := castStartingAddress(startingAddressStr)
-	if err != nil {
-		return nil, errors.NewCommonEdgeX(errors.Kind(err), fmt.Sprintf("fail to cast %s", STARTING_ADDRESS), err)
-	}
-
+	var err error
 	var rawType = req.Type
 	if _, ok := req.Attributes[RAW_TYPE]; ok {
 		rawType = fmt.Sprintf("%v", req.Attributes[RAW_TYPE])
@@ -243,7 +254,7 @@ func TransformCommandValueToDataBytes(commandInfo *CommandInfo, value *models.Co
 
 	_, ok := ValueTypeBitCountMap[commandInfo.ValueType]
 	if !ok {
-		err = fmt.Errorf("none supported value type : %v \n", commandInfo.ValueType)
+		err = fmt.Errorf("none supported value type : %v", commandInfo.ValueType)
 		return dataBytes, err
 	}
 
@@ -252,39 +263,42 @@ func TransformCommandValueToDataBytes(commandInfo *CommandInfo, value *models.Co
 	}
 
 	// Cast value according to the rawType, this feature converts float value to integer 32bit value
-	if commandInfo.ValueType == common.ValueTypeFloat32 {
+	switch commandInfo.ValueType {
+	case common.ValueTypeFloat32:
 		val, edgexErr := value.Float32Value()
 		if edgexErr != nil {
 			return dataBytes, edgexErr
 		}
-		if commandInfo.RawType == common.ValueTypeInt16 {
+		switch commandInfo.RawType {
+		case common.ValueTypeInt16:
 			dataBytes, err = getBinaryData(int16(val))
 			if err != nil {
 				return dataBytes, err
 			}
-		} else if commandInfo.RawType == common.ValueTypeUint16 {
+		case common.ValueTypeUint16:
 			dataBytes, err = getBinaryData(uint16(val))
 			if err != nil {
 				return dataBytes, err
 			}
 		}
-	} else if commandInfo.ValueType == common.ValueTypeFloat64 {
+	case common.ValueTypeFloat64:
 		val, edgexErr := value.Float64Value()
 		if edgexErr != nil {
 			return dataBytes, edgexErr
 		}
-		if commandInfo.RawType == common.ValueTypeInt16 {
+		switch commandInfo.RawType {
+		case common.ValueTypeInt16:
 			dataBytes, err = getBinaryData(int16(val))
 			if err != nil {
 				return dataBytes, err
 			}
-		} else if commandInfo.RawType == common.ValueTypeUint16 {
+		case common.ValueTypeUint16:
 			dataBytes, err = getBinaryData(uint16(val))
 			if err != nil {
 				return dataBytes, err
 			}
 		}
-	} else if commandInfo.ValueType == common.ValueTypeString {
+	case common.ValueTypeString:
 		// Cast value of string type
 		oriStr := value.ValueToString()
 		tempBytes := []byte(oriStr)
